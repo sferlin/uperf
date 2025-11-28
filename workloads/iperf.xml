@@ -2,11 +2,10 @@
 <profile name="iPERF">
   <group nthreads="$nthr">
         <transaction iterations="1">
-            <flowop type="connect" options="remotehost=$h protocol=$proto
-	    wndsz=50k  tcp_nodelay"/>
+            <flowop type="connect" options="remotehost=$h protocol=$proto"/>
         </transaction>
         <transaction duration="30s">
-            <flowop type="write" options="count=10 size=8k"/>
+            <flowop type="write" options="count=10 size=65435"/>
         </transaction>
         <transaction iterations="1">
             <flowop type="disconnect" />
