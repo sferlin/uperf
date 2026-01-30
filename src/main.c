@@ -145,11 +145,40 @@ uperf_version()
 	(void) printf("\nReport bugs to %s\n", UPERF_EMAIL_ALIAS);
 }
 
+static int parse_int_list(const char *str, int *out, size_t capacity)
+{
+    const char *p = str;
+    size_t n = 0;
+
+    while (*p) {
+        errno = 0;
+        char *end;
+        long value = strtol(p, &end, 10);
+
+        if (p == end || errno || value < 0)
+            return -1;
+
+        if (n >= capacity)
+            return -2;
+
+        out[n++] = (int)value;
+        p = end;
+
+        if (*p == ',') {
+            p++;
+        } else if (*p != '\0') {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
 static options_t *
 init_options(int argc, char **argv)
 {
 	int oserver, oclient, ofile;
-	int ch;
+	int ch, i;
 
 	if (argc < 2) {
 		uperf_usage(argv[0]);
@@ -167,8 +196,10 @@ init_options(int argc, char **argv)
 	options.control_proto = PROTOCOL_TCP;
 	oserver = oclient = ofile = 0;
 
-	options.zc_queue_index = -1;
-	options.zc_cpu = -1;
+	for (i = 0; i < 32; ++i) {
+		options.zc_queue_index[i] = -1;
+		options.zc_cpu[i] = -1;
+	}
 
 	while ((ch = getopt(argc, argv, "E:epTgtfknasm:X:i:P:S:RvVh:I:Q:C:")) != EOF) {
 		switch (ch) {
@@ -304,14 +335,12 @@ init_options(int argc, char **argv)
 			break;
 		case 'Q':
 			if (optarg) {
-				options.zc_queue_index = (int)
-					string_to_int(optarg);
+				parse_int_list(optarg, options.zc_queue_index, 32);
 			}
 			break;
 		case 'C':
 			if (optarg) {
-				options.zc_cpu = (int)
-					string_to_int(optarg);
+				parse_int_list(optarg, options.zc_cpu, 32);
 			}
 			break;
 		case 'v':
