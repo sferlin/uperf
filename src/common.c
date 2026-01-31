@@ -81,15 +81,21 @@ create_protocols(uperf_shm_t *shm, int nthr, flowop_t *f,
 		return (UPERF_SUCCESS);
 
         /* One port per thread with options.port as start */
-        for (i = 0; i < nthr; i++) {
-                strand_t *s = shm_get_strand(shm, i + ssid);
+	for (i = 0; i < nthr; i++) {
+		strand_t *s = shm_get_strand(shm, i + ssid);
 		if (f->options.port != 0) {
 			int port = htons(f->options.port + i);
 			p = create_protocol(protocol, " ", ntohs(port), SLAVE);
 		} else {
 			p = create_protocol(protocol, " ", ANY_PORT, SLAVE);
 		}
-		sl[i].port[protocol] = p->listen(p, (void *)&f->options);
+
+		// Compute actual thread index
+		flowop_options_t options;
+		memcpy(&options, &f->options, sizeof(options));
+		options.tidx += i;
+
+		sl[i].port[protocol] = p->listen(p, (void *)&options);
 		if (sl[i].port[protocol] == UPERF_FAILURE) {
 			return (UPERF_FAILURE);
 		}

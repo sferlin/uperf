@@ -68,6 +68,7 @@ strand_init_group(uperf_shm_t *shm, group_t *g, int ssid)
 		(void) bzero(st->ccache, sizeof (st->ccache));
 		st->cpool = NULL;
 		st->ccache_size = 0;
+		st->tidx = j;
 
 		if (j == 0)
 			st->strand_flag |= STRAND_LEADER;

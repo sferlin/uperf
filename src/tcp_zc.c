@@ -127,7 +127,7 @@ static inline size_t get_refill_ring_size(unsigned int rq_entries, long page_siz
 	return ALIGN_UP(size, page_size);
 }
 
-static int init_ring(protocol_t *p, int flow_port, flowop_options_t *flowop_options)
+static int init_ring(protocol_t *p, flowop_options_t *flowop_options)
 {
 	int ring_flags = IORING_SETUP_DEFER_TASKRUN | IORING_SETUP_COOP_TASKRUN | IORING_SETUP_SINGLE_ISSUER | IORING_SETUP_CQE32;
 	tcp_zc_private_data *pd = p->_protocol_p;
@@ -136,10 +136,8 @@ static int init_ring(protocol_t *p, int flow_port, flowop_options_t *flowop_opti
 	long page_size;
 	void *area_ptr;
 	void *ring_ptr;
-	int ret, idx;
-
-	idx = flow_port - flowop_options->port;
-	uperf_info("init_ring %i -> %i ... (base port: %i)\n", flow_port, idx, flowop_options->port);
+	int ret;
+	int	idx = flowop_options->tidx;
 
 	ret = io_uring_queue_init(512, &pd->ring, ring_flags);
 	if (ret) {
@@ -265,6 +263,12 @@ protocol_tcp_zc_listen(protocol_t *p, void *options)
 	flowop_options_t *flowop_options = (flowop_options_t *)options;
 	char msg[128];
 
+	if (flowop_options != NULL) {
+		uperf_debug("tcp_zc: Listening on %s:%d, thread index: %d\n", p->host, p->port, flowop_options->tidx);
+	} else {
+		uperf_debug("tcp_zc: Listening on %s:%d\n", p->host, p->port);
+	}
+
 	/* SO_RCVBUF must be set before bind */
 
 	if (generic_socket(p, AF_INET6, IPPROTO_TCP) != UPERF_SUCCESS) {
@@ -280,38 +284,17 @@ protocol_tcp_zc_listen(protocol_t *p, void *options)
 }
 
 static int
-bind_local(protocol_t *p) {
-	struct sockaddr_in local_addr;
-	int opt, ret;
-
-	if (p->port == 0) {
-		return 0;
-	}
-
-	uperf_debug("tcp_zc: Binding local socket to port %d\n", p->port);
-
-	opt = 1;
-	setsockopt(p->fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-	memset(&local_addr, 0, sizeof(local_addr));
-	local_addr.sin_family = AF_INET;
-	local_addr.sin_port = htons(p->port);
-	local_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	ret = bind(p->fd, (struct sockaddr *)&local_addr, sizeof(local_addr));
-	if (ret < 0) {
-		uperf_log_msg(UPERF_LOG_ERROR, ret, "Failed binding to port");
-	}
-	return ret;
-}
-
-static int
 protocol_tcp_zc_connect(protocol_t *p, void *options)
 {
 	struct sockaddr_storage serv;
 	flowop_options_t *flowop_options = (flowop_options_t *)options;
 	char msg[128];
 
-	uperf_debug("tcp_zc: Connecting to %s:%d\n", p->host, p->port);
+	if (flowop_options != NULL) {
+		uperf_debug("tcp_zc: Connecting to %s:%d, thread index: %d\n", p->host, p->port, flowop_options->tidx);
+	} else {
+		uperf_debug("tcp_zc: Connecting to %s:%d\n", p->host, p->port);
+	}
 
 	if (name_to_addr(p->host, &serv)) {
 		/* Error is already reported by name_to_addr, so just return */
@@ -341,13 +324,10 @@ protocol_tcp_zc_connect(protocol_t *p, void *options)
 		return (UPERF_FAILURE);
 #endif
 	}
-	if (bind_local(p) < 0) {
-		return (UPERF_FAILURE);
-	}
 	if (generic_connect(p, &serv) < 0) {
 		return (UPERF_FAILURE);
 	}
-	if (init_ring(p, p->port, flowop_options))
+	if (init_ring(p, flowop_options))
 		return UPERF_FAILURE;
 	return (UPERF_SUCCESS);
 }
@@ -486,7 +466,7 @@ static int protocol_tcp_zc_recv(protocol_t *p, void *buffer, int size,
 
 	}
 	io_uring_cq_advance(&pd->ring, count);
-	
+
 	return received;
 }
 
@@ -549,7 +529,7 @@ protocol_tcp_zc_accept(protocol_t *p, void *options)
 	if (generic_accept(p, newp, options) != 0) {
 		return (NULL);
 	}
-	if (init_ring(newp, p->port, options)) {
+	if (init_ring(newp, options)) {
 		tcp_zc_fini(newp);
 		return NULL;
 	}

@@ -580,6 +580,18 @@ parse_option(char *option, flowop_t *flowop)
 				add_error(err);
 				return (UPERF_FAILURE);
 			}
+		} else if (strcasecmp(key, "tidx") == 0) {
+			int res;
+
+			res = string2int(value);
+			if (res >= 0) {
+				flowop->options.tidx = res;
+			} else {
+				snprintf(err, sizeof(err),
+				         "Cannot understand tidx:%s", value);
+				add_error(err);
+				return (UPERF_FAILURE);
+			}
 		}
 #ifdef HAVE_SCTP
 		else if (strcasecmp(key, "sctp_rto_min") == 0) {
