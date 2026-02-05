@@ -168,8 +168,8 @@ static int init_ring(protocol_t *p, flowop_options_t *flowop_options)
 			return (UPERF_SUCCESS);
 		}
 
-		uperf_info("Pinned queue index %i with cpu %i\n",
-			options.zc_queue_index[idx], options.zc_cpu[idx]);
+		uperf_info("Port %i: Pinned queue index %i with cpu %i\n",
+			p->port, options.zc_queue_index[idx], options.zc_cpu[idx]);
 
 		page_size = sysconf(_SC_PAGESIZE);
 		if (page_size < 0)
@@ -221,20 +221,19 @@ static int init_ring(protocol_t *p, flowop_options_t *flowop_options)
 		ret = io_uring_register_ifq(&pd->ring, &reg);
 		if (ret) {
 			ulog(UPERF_LOG_ERROR, -ret,
-				"io_uring_register_ifq() failed in an attempt to "
+				"Port %i: io_uring_register_ifq() failed in an attempt to "
 				"register zerocopy receive on ifindex %d queue %d "
 				"with area size %d ring size %d and %d entries\n",
-				options.zc_ifindex, options.zc_queue_index[idx],
+				p->port, options.zc_ifindex, options.zc_queue_index[idx],
 				AREA_SIZE(page_size),
-				pd->ring_size, rq_entries
-			);
+				ring_size, rq_entries);
 			errno = -ret;
 			return -1;
 		}
 
-		uperf_info("Registered zerocopy receive on ifindex %d queue %d "
+		uperf_info("Port %i: Registered zerocopy receive on ifindex %d queue %d "
 			   "with area size %d ring size %d and %d entries\n",
-			   options.zc_ifindex, options.zc_queue_index[idx],
+			   p->port, options.zc_ifindex, options.zc_queue_index[idx],
 			   AREA_SIZE(page_size),
 			   ring_size, rq_entries);
 
