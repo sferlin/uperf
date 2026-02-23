@@ -71,7 +71,7 @@ static void
 uperf_usage(char *prog)
 {
 	(void) printf("Uperf Version %s\n", UPERF_VERSION);
-	(void) printf("Usage:   %s [-m profile] [-hvV] [-ngtTfkpaeE:X:i:P:RS:]\n",
+	(void) printf("Usage:   %s [-m profile] [-hvV] [-ngtTfkpaeE:X:i:P:RS:Q:C:M:W:]\n",
 	    prog);
 	(void) printf("\t %s [-s] [-hvV]\n\n", prog);
 	(void) printf(
@@ -88,6 +88,8 @@ uperf_usage(char *prog)
 	"\t-e\t\t Collect default CPU counters for flowops [-f assumed]\n"
 	"\t-E <ev1,ev2>\t Collect CPU counters for flowops [-f assumed]\n"
 	"\t-a\t\t Collect all statistics\n"
+	"\t-W <Worker-threads-cpu>\t Set Worker threads cpu affinity\n"
+	"\t-M <Main-thread-cpu>\t Set Main thread cpu affinity\n"
 	"\t-X <file>\t Collect response times\n"
 	"\t-i <interval>\t Collect throughput every <interval>\n"
 	"\t-P <port>\t Set the master port (defaults to 20000)\n"
@@ -174,6 +176,22 @@ static int parse_int_list(const char *str, int *out, size_t capacity)
     return 0;
 }
 
+int is_cpu_allowed(int cpu_id) {
+    cpu_set_t set;
+    CPU_ZERO(&set);
+
+    /* Gets affinity mask from the calling process (pid 0) */
+    if (sched_getaffinity(0, sizeof(set), &set) == -1) {
+        perror("sched_getaffinity failed");
+        return -1;
+    }
+
+    if (CPU_ISSET(cpu_id, &set)) {
+        return 1;
+    }
+    return 0;
+}
+
 static options_t *
 init_options(int argc, char **argv)
 {
@@ -201,7 +219,7 @@ init_options(int argc, char **argv)
 		options.zc_cpu[i] = -1;
 	}
 
-	while ((ch = getopt(argc, argv, "E:epTgtfknasm:X:i:P:S:RvVh:I:Q:C:")) != EOF) {
+	while ((ch = getopt(argc, argv, "E:epTgtfknasm:X:i:P:S:RvVh:I:Q:C:W:M:")) != EOF) {
 		switch (ch) {
 #ifdef USE_CPC
 		case 'E':
@@ -343,6 +361,34 @@ init_options(int argc, char **argv)
 				parse_int_list(optarg, options.zc_cpu, 32);
 			}
 			break;
+		case 'W':
+			if (optarg) {
+				options.worker_thread = (unsigned int) string_to_int(optarg);
+				if (!is_cpu_allowed(options.worker_thread)) {
+					uperf_warn("Invalid CPU worker thread(s): %u\n",
+							options.worker_thread);
+				} else {
+					options.has_worker_thread = 1;
+				}
+			}
+			else {
+				uperf_fatal("Please specify CPU worker thread(s)\n");
+			}
+			break;
+		case 'M':
+			if (optarg) {
+				options.main_thread = (unsigned int) string_to_int(optarg);
+				if (!is_cpu_allowed(options.main_thread)) {
+					uperf_warn("Invalid CPU main thread: %u\n",
+							options.main_thread);
+				} else {
+					options.has_main_thread = 1;
+				}
+			}
+			else {
+				uperf_fatal("Please specify CPU main thread\n");
+			}
+			break;			
 		case 'v':
 			uperf_set_log_level(UPERF_VERBOSE);
 			break;
