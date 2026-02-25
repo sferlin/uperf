@@ -515,7 +515,7 @@ parse_option(char *option, flowop_t *flowop)
 			flowop->options.protocol = protocol_type(value);
 			if (protocol_type(value) == PROTOCOL_UNSUPPORTED) {
 				snprintf(err, sizeof (err),
-					"Protocol %s not supported",
+					"Protocol '%s' not supported (parse.c)",
 					value);
 				add_error(err);
 				return (UPERF_FAILURE);

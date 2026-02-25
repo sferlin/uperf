@@ -337,7 +337,7 @@ init_options(int argc, char **argv)
 
 			options.control_proto = protocol_type(optarg);
 			if (options.control_proto == PROTOCOL_UNSUPPORTED) {
-				uperf_fatal("Protocol %s not supported\n",
+				uperf_fatal("Protocol '%s' not supported (main.c)\n",
 				    optarg);
 			}
 			break;
