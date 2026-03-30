@@ -93,7 +93,7 @@ typedef struct _histogram {
     uint64_t *buckets;           /* Array of counters for each bucket */
     uint64_t total_count;        /* Total samples added */
     uint64_t overflow_count;     /* Count of samples > max_bucket */
-	uint32_t overflow_capacity;  /* Capacity (max count) of overflow bucket */
+    uint32_t overflow_capacity;  /* Capacity (max count) of overflow bucket */
     uint64_t *overflow_samples;  /* Overflow samples */
 
     uint64_t min_val;            /* Minimum sample value */
@@ -102,13 +102,14 @@ typedef struct _histogram {
 
     uint64_t min_index;          /* Index # of min sample */
     uint64_t max_index;          /* Index # of max sample */
-	uint64_t max_timestamp;      /* Timestamp of max sample */
+    uint64_t max_timestamp;      /* Timestamp of max sample */
 
     uint32_t num_buckets;        /* Configured number of buckets */
     uint32_t bucket_size_ns;     /* Configured size of each bucket (in ns) */
     uint32_t max_bucket_ns;      /* Configured max latency (in ns) */
 
-	uint64_t rtt_start_time;    /* Start time from the last transaction */
+    uint64_t rtt_start_time;    /* Start time from the last transaction */
+    int      rtt_latency_metric;/* If set to non-zero, record RTT latency; works only for RR measurements*/
 }histogram_t;
 
 void histogram_init(strand_t *s);

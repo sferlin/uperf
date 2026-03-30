@@ -277,15 +277,16 @@ histogram_init(strand_t *s)
 		(uint32_t) (s->histogram->max_bucket_ns / s->histogram->bucket_size_ns) + 1;
     	s->histogram->buckets = calloc(s->histogram->num_buckets, sizeof(uint64_t));
     	s->histogram->min_val = 1e9;
-		s->histogram->min_index = 0;
+        s->histogram->min_index = 0;
     	s->histogram->max_val = 0;
-		s->histogram->max_index = 0;
+        s->histogram->max_index = 0;
     	s->histogram->sum_val = 0;
     	s->histogram->total_count = 0;
     	s->histogram->overflow_count = 0;
 	/* 1GB (125 million uint64_t samples) */
 	s->histogram->overflow_capacity = 125000000;
 	s->histogram->rtt_start_time = 0;
+	s->histogram->rtt_latency_metric = options.rtt_latency_metric;
 	size_t overflow_size = s->histogram->overflow_capacity * sizeof(uint64_t);
 	s->histogram->overflow_samples = malloc(overflow_size);
 	if (s->histogram->overflow_samples == NULL) {
@@ -302,6 +303,7 @@ int compare_samples(const void *a, const void *b) {
     return 0;
 }
 
+
 static uint64_t
 get_percentile(histogram_t *h, double percentile)
 {
@@ -310,7 +312,8 @@ get_percentile(histogram_t *h, double percentile)
     /* 0th percentile */
     if (count_needed == 0) return h->min_val;
 
-	uint64_t cumulative_count = 0;
+    /* standard bucket logic */
+    uint64_t cumulative_count = 0;
     for (uint32_t i = 0; i < h->num_buckets; i++) {
         cumulative_count += h->buckets[i];
         if (cumulative_count >= count_needed) {
@@ -319,7 +322,7 @@ get_percentile(histogram_t *h, double percentile)
         }
     }
 
-	/* overflow bucket logic (target sample is in the overflow bucket) */
+    /* overflow bucket logic (target sample is in the overflow bucket) */
     uint64_t index_needed = count_needed - cumulative_count - 1;
     if (index_needed < 0) index_needed = 0;
     if (index_needed >= h->overflow_count) index_needed = h->overflow_count - 1;
@@ -346,7 +349,11 @@ histogram_summary(strand_t *s)
         fprintf(options.histogram_fd, "  Minimum   :  %.2f us (#%lu)\n", (double) (h->min_val / 1e3), h->min_index);
         fprintf(options.histogram_fd, "  Maximum   :  %.2f us (#%lu) | timestamp: %lu\n", (double) (h->max_val / 1e3),
                 h->max_index, h->max_timestamp);
-        fprintf(options.histogram_fd, "  Average   :  %.2f us\n", (double) (h->sum_val / h->total_count) / 1e3);
+		if (h->overflow_count > 0) {
+			fprintf(options.histogram_fd, "  Average   :  %.2f us\n", (double) (h->sum_val / h->total_count) / 1e3);
+		} else {
+			fprintf(options.histogram_fd, "  Average   :  NONE us\n");
+		}
     	fprintf(options.histogram_fd, "  Percentiles (us):\n");
     	fprintf(options.histogram_fd, "    50th    :  %lu (Median)\n", get_percentile(h, 0.50));
     	fprintf(options.histogram_fd, "    90th    :  %lu\n", get_percentile(h, 0.90));
@@ -361,7 +368,7 @@ histogram_summary(strand_t *s)
 	if (s->histogram->overflow_count == s->histogram->overflow_capacity) {
 	    fprintf(options.histogram_fd, "Warning: Too many samples in the Overflow bucket.\n");
 	    fprintf(options.histogram_fd, "Increase the max-bucket parameter (-B <max-bucket>).\n");
-	}			   
+	}
 	fprintf(options.histogram_fd, "    ...\n");
 	uint32_t max_bucket_idx = h->num_buckets - 1;
 	for (uint32_t i = max_bucket_idx; i >= 0; i--) {
@@ -387,16 +394,21 @@ histogram_summary(strand_t *s)
 void
 histogram_record(strand_t *s, uint64_t start, uint64_t end)
 {
-        if (s->rtt == 1) {
-		s->histogram->rtt_start_time = start;
-		return;
+	uint64_t delta;
+	if (s->histogram->rtt_latency_metric) {
+		if (s->rtt == 1) {
+			s->histogram->rtt_start_time = start;
+			return;
+		}
+		if (s->rtt != 2) {
+			return;
+		}
+		/* reset rtt state machine */
+		s->rtt = 0;
+		delta = end - s->histogram->rtt_start_time;
+	} else {
+		delta = end - start;
 	}
-	if (s->rtt != 2) {
-		return;
-	}
-	/* reset rtt state machine */
-	s->rtt = 0;
-	uint64_t delta = end - s->histogram->rtt_start_time;
 
 	s->histogram->total_count++;
 	s->histogram->sum_val += delta;
@@ -407,12 +419,12 @@ histogram_record(strand_t *s, uint64_t start, uint64_t end)
 	}
 	if ( delta > s->histogram->max_val ) {
 	    s->histogram->max_val = delta;
-		s->histogram->max_timestamp = end;
+	    s->histogram->max_timestamp = end;
 	    s->histogram->max_index = s->histogram->total_count;
 	}
-	
+
 	if (delta >= s->histogram->max_bucket_ns) {
-		if (s->histogram->overflow_count < s->histogram->overflow_capacity) {
+	    if (s->histogram->overflow_count < s->histogram->overflow_capacity) {
 	        s->histogram->overflow_samples[s->histogram->overflow_count++] = delta;
 	    }
     	} else {
@@ -425,7 +437,7 @@ void
 histogram_cleanup(strand_t *s)
 {
 	histogram_t *h = s->histogram;
-		free(h->overflow_samples);
+        free(h->overflow_samples);
         free(h->buckets);
         free(h);
 }

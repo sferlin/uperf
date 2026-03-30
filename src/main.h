@@ -81,6 +81,7 @@ typedef struct options {
 	proto_type_t control_proto;
 	uint64_t bucket_len;	/* histogram bucket length (in us) */
 	uint64_t max_bucket;	/* max histogram bucket (in us) */
+	int rtt_latency_metric; /* If set to non-zero, record RTT latency; works only for RR measurements */
 	int zc_ifindex;
 	int zc_queue_index[32];
 	int zc_cpu[32];

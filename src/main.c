@@ -263,8 +263,9 @@ init_options(int argc, char **argv)
 
 	options.bucket_len = 1000;     /* Default: 1us Bucket length */
 	options.max_bucket = 100000;   /* Default: 100us Max bucket */
+	options.rtt_latency_metric = 1;/* Default: record RTT latency */
 
-	while ((ch = getopt(argc, argv, "E:epTgtfknasm:H:B:b:X:i:P:S:RvVh:I:Q:C:W:M:")) != EOF) {
+	while ((ch = getopt(argc, argv, "E:repTgtfknasm:H:B:b:X:i:P:S:RvVh:I:Q:C:W:M:")) != EOF) {
 		switch (ch) {
 #ifdef USE_CPC
 		case 'E':
@@ -346,6 +347,9 @@ init_options(int argc, char **argv)
 			ofile++;
 			break;
 #endif
+		case 'r':
+			options.rtt_latency_metric = 0; // DISABLE RTT latency metric
+			break;
 		case 'H':
 			options.copt |= HISTOGRAM_STATS;
                         if (optarg) {
