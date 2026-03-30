@@ -462,8 +462,13 @@ strand_run(void *sp)
 	}
 	/* set the pid of the process, will be used in accessing the /proc */
 	s->pid = getpid();
-	if ((shm->role == MASTER) && ENABLED_HISTORY_STATS(options)) {
-		history_init(s);
+	if (shm->role == MASTER) {
+		if (ENABLED_HISTORY_STATS(options)) {
+			history_init(s);
+		}
+		if (ENABLED_HISTOGRAM_STATS(options)) {
+			histogram_init(s);
+		}
 	}
 
 #ifdef USE_CPC
@@ -487,6 +492,10 @@ strand_run(void *sp)
 	shm_update_strand_exit(shm);
 	if (ENABLED_HISTORY_STATS(options)) {
 		flush_history(s);
+	}
+	if (ENABLED_HISTOGRAM_STATS(options)) {
+		histogram_summary(s);
+		histogram_cleanup(s);
 	}
 	strand_fini(s);
 

@@ -82,6 +82,7 @@ struct uperf_strand {
 	uint64_t	datasz;
 	newstats_t 	nstats;
 	history_t	*history;
+	histogram_t	*histogram;
 	uint64_t	hsize;
 	uperf_shm_t	*shmptr;
 };

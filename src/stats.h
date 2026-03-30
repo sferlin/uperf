@@ -89,4 +89,31 @@ void history_init(strand_t *s);
 void flush_history(strand_t *s);
 void history_record(strand_t *, uint32_t, uint64_t, uint64_t);
 
+typedef struct _histogram {
+    uint64_t *buckets;           /* Array of counters for each bucket */
+    uint64_t total_count;        /* Total samples added */
+    uint64_t overflow_count;     /* Count of samples > max_bucket */
+	uint32_t overflow_capacity;  /* Capacity (max count) of overflow bucket */
+    uint64_t *overflow_samples;  /* Overflow samples */
+
+    uint64_t min_val;            /* Minimum sample value */
+    uint64_t max_val;            /* Maximum sample value */
+    uint64_t sum_val;            /* Sum of all values (for average) */
+
+    uint64_t min_index;          /* Index # of min sample */
+    uint64_t max_index;          /* Index # of max sample */
+	uint64_t max_timestamp;      /* Timestamp of max sample */
+
+    uint32_t num_buckets;        /* Configured number of buckets */
+    uint32_t bucket_size_ns;     /* Configured size of each bucket (in ns) */
+    uint32_t max_bucket_ns;      /* Configured max latency (in ns) */
+}histogram_t;
+
+void histogram_init(strand_t *s);
+void histogram_summary(strand_t *s);
+void histogram_record(strand_t *, uint64_t, uint64_t);
+void histogram_cleanup(strand_t *s);
+
+static uint64_t get_percentile(histogram_t *h, double);
+
 #endif /* _STATS_H */

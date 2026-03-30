@@ -639,6 +639,9 @@ master(workorder_t *w)
 	if (ENABLED_HISTORY_STATS(options)) {
 		(void) fclose(options.history_fd);
 	}
+	if (ENABLED_HISTOGRAM_STATS(options)) {
+		(void) fclose(options.histogram_fd);
+	}
 	/* Cleanup */
 	if (shm->global_error != 0) {
 		(void) printf("\nWARNING: %d Errors detected during run\n",shm->global_error);

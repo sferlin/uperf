@@ -39,6 +39,7 @@
 #define	UTILIZATION_STATS	(1<<11)
 #define	NO_STATS		(1<<12)
 #define RAW_STATS		(1<<13)
+#define HISTOGRAM_STATS		(1<<14)
 
 #define	ENABLED_FLOWOP_STATS(a)		((a).copt & FLOWOP_STATS)
 #define	ENABLED_TXN_STATS(a)		((a).copt & TXN_STATS)
@@ -52,6 +53,7 @@
 #define	DISABLED_STATS(a)		((a).copt & NO_STATS)
 #define	ENABLED_STATS(a)		(!DISABLED_STATS(a))
 #define ENABLED_RAW_STATS(a)		((a).copt & RAW_STATS)
+#define	ENABLED_HISTOGRAM_STATS(a)	((a).copt & HISTOGRAM_STATS)
 
 #define	UPERF_MASTER		(1<<0)
 #define	UPERF_SLAVE		(1<<1)
@@ -69,12 +71,16 @@ typedef struct options {
 	int	bitorbyte;
 	int	xanadu_print;
 	FILE	*history_fd;
+	FILE	*histogram_fd;
 	char	xfile[PATH_MAX];
+	char	hfile[PATH_MAX];
 	char	*ev1;
 	char	*ev2;
 	uint32_t copt;	/* Collect options */
 	uint64_t interval;	/* collect stats every interval msecs */
 	proto_type_t control_proto;
+	uint64_t bucket_len;	/* histogram bucket length (in us) */
+	uint64_t max_bucket;	/* max histogram bucket (in us) */
 	int zc_ifindex;
 	int zc_queue_index[32];
 	int zc_cpu[32];
