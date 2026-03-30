@@ -103,6 +103,7 @@ uperf_usage(char *prog)
 	"\t-i <interval>\t Collect throughput every <interval>\n"
 	"\t-P <port>\t Set the master port (defaults to 20000)\n"
 	"\t-R\t\t Emit raw (not transformed), time-stamped (ms) statistics\n"
+	"\t-q\t\t Quiet (no progress is printed to stdout during the test)\n"
 	"\t-I\t\t Interface to bind ZC receive to\n"
 	"\t-Q\t\t Queue index used for ZC receive\n"
 	"\t-C\t\t CPU to pin ZC send/receive to\n"
@@ -265,7 +266,7 @@ init_options(int argc, char **argv)
 	options.max_bucket = 100000;   /* Default: 100us Max bucket */
 	options.rtt_latency_metric = 1;/* Default: record RTT latency */
 
-	while ((ch = getopt(argc, argv, "E:repTgtfknasm:H:B:b:X:i:P:S:RvVh:I:Q:C:W:M:")) != EOF) {
+	while ((ch = getopt(argc, argv, "E:repTgtfknasm:H:B:b:X:i:P:S:RvqVh:I:Q:C:W:M:")) != EOF) {
 		switch (ch) {
 #ifdef USE_CPC
 		case 'E':
@@ -426,6 +427,9 @@ init_options(int argc, char **argv)
 			break;
 		case 'R':
 			options.copt |= RAW_STATS;
+			break;
+		case 'q':
+			options.copt |= QUIET_STATS;
 			break;
 		case 'I':
 			if (optarg) {

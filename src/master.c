@@ -287,8 +287,10 @@ master_poll(uperf_shm_t *shm)
 		if (BARRIER_REACHED(curr_bar)) { /* goto Next Txn */
 			if (ENABLED_STATS(options)) {
 				if (curr_txn != 0) {
-					print_progress(shm, prev_ns);
-					(void) printf("\n");
+					if (!ENABLED_QUIET_STATS(options)) {
+						print_progress(shm, prev_ns);
+						(void) printf("\n");
+					}
 				}
 				update_aggr_stat(shm);
 				(void) memcpy(&prev_ns, AGG_STAT(shm),
@@ -312,7 +314,7 @@ master_poll(uperf_shm_t *shm)
 		}
 
 		shm->current_time = GETHRTIME();
-		if (ENABLED_STATS(options) &&
+		if (ENABLED_STATS(options) && !ENABLED_QUIET_STATS(options) &&
 		    (time_to_print <= shm->current_time)) {
 			print_progress(shm, prev_ns);
 			time_to_print = shm->current_time
@@ -321,10 +323,12 @@ master_poll(uperf_shm_t *shm)
 	}
 	while (shm->global_error == 0 && shm->finished == 0) {
 		shm_process_callouts(shm);
-		print_progress(shm, prev_ns);
-		(void) poll(NULL, 0, 100);
+		if (!ENABLED_QUIET_STATS(options)) {
+			print_progress(shm, prev_ns);
+			(void) poll(NULL, 0, 100);
+		}
 	}
-	if (ENABLED_STATS(options)) {
+	if (ENABLED_STATS(options) && !ENABLED_QUIET_STATS(options)) {
 		(void) printf("\n");
 		uperf_line();
 	}

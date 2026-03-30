@@ -40,6 +40,7 @@
 #define	NO_STATS		(1<<12)
 #define RAW_STATS		(1<<13)
 #define HISTOGRAM_STATS		(1<<14)
+#define QUIET_STATS		(1<<15)
 
 #define	ENABLED_FLOWOP_STATS(a)		((a).copt & FLOWOP_STATS)
 #define	ENABLED_TXN_STATS(a)		((a).copt & TXN_STATS)
@@ -54,6 +55,7 @@
 #define	ENABLED_STATS(a)		(!DISABLED_STATS(a))
 #define ENABLED_RAW_STATS(a)		((a).copt & RAW_STATS)
 #define	ENABLED_HISTOGRAM_STATS(a)	((a).copt & HISTOGRAM_STATS)
+#define	ENABLED_QUIET_STATS(a)		((a).copt & QUIET_STATS)
 
 #define	UPERF_MASTER		(1<<0)
 #define	UPERF_SLAVE		(1<<1)
