@@ -173,8 +173,7 @@ stats_update(int type, strand_t *s, newstats_t *stats, uint64_t size,
 				    stats->end_time - stats->time_used_start);
 			}
 			if (ENABLED_HISTOGRAM_STATS(options)) {
-				uint64_t _delta = stats->end_time - stats->time_used_start;
-				histogram_record(s, _delta, stats->end_time);
+				histogram_record(s, stats->time_used_start, stats->end_time);
 			}
 			return (err);
 		}
@@ -286,6 +285,7 @@ histogram_init(strand_t *s)
     	s->histogram->overflow_count = 0;
 	/* 1GB (125 million uint64_t samples) */
 	s->histogram->overflow_capacity = 125000000;
+	s->histogram->rtt_start_time = 0;
 	size_t overflow_size = s->histogram->overflow_capacity * sizeof(uint64_t);
 	s->histogram->overflow_samples = malloc(overflow_size);
 	if (s->histogram->overflow_samples == NULL) {
@@ -385,8 +385,19 @@ histogram_summary(strand_t *s)
 }
 
 void
-histogram_record(strand_t *s, uint64_t delta, uint64_t ts)
+histogram_record(strand_t *s, uint64_t start, uint64_t end)
 {
+        if (s->rtt == 1) {
+		s->histogram->rtt_start_time = start;
+		return;
+	}
+	if (s->rtt != 2) {
+		return;
+	}
+	/* reset rtt state machine */
+	s->rtt = 0;
+	uint64_t delta = end - s->histogram->rtt_start_time;
+
 	s->histogram->total_count++;
 	s->histogram->sum_val += delta;
 
@@ -396,7 +407,7 @@ histogram_record(strand_t *s, uint64_t delta, uint64_t ts)
 	}
 	if ( delta > s->histogram->max_val ) {
 	    s->histogram->max_val = delta;
-		s->histogram->max_timestamp = ts;
+		s->histogram->max_timestamp = end;
 	    s->histogram->max_index = s->histogram->total_count;
 	}
 	

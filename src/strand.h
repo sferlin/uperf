@@ -85,6 +85,7 @@ struct uperf_strand {
 	histogram_t	*histogram;
 	uint64_t	hsize;
 	uperf_shm_t	*shmptr;
+	int		rtt; /* state machine: 0=start, 1=ping, 2=pong */
 };
 
 int strand_add_slave(strand_t *, slave_info_t *);

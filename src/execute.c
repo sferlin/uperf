@@ -67,6 +67,11 @@ flowop_execute(strand_t *sp, flowop_t *fp)
 	int ret = 0;
 	int save_errno;
 
+	/* NOTE: DO NOT count this transaction if duration expired */
+	if (SIGNALLED(sp)) {
+                return (UPERF_DURATION_EXPIRED);
+	}
+	
 	STATS_RECORD_FLOWOP(FLOWOP_BEGIN, sp, FLOWOP_STAT(fp), 0, 0);
 	for (i = 0; i < fp->options.count; i++) {
 		if (SIGNALLED(sp)) {
@@ -78,6 +83,21 @@ flowop_execute(strand_t *sp, flowop_t *fp)
 		} else if (ret < 0)
 			break;
 	}
+
+	/* NOTE: DO NOT count this transaction if duration expired */
+	if (SIGNALLED(sp)) {
+                return (UPERF_DURATION_EXPIRED);
+        }
+	
+	if (ENABLED_HISTOGRAM_STATS(options)) {
+		if (fp->type == FLOWOP_READ) {
+	            sp->rtt = 2;
+		}
+		else if (fp->type == FLOWOP_WRITE) {
+	            sp->rtt = 1;
+		}
+	}
+
 	save_errno = errno;
 	STATS_RECORD_FLOWOP(FLOWOP_END, sp, FLOWOP_STAT(fp), ret, i);
 	if ((save_errno == EINTR) || SIGNALLED(sp)) {
@@ -92,6 +112,9 @@ txn_execute_once(strand_t *strand, txn_t *txn)
 {
 	flowop_t *f;
 	int ret = UPERF_SUCCESS;
+
+	/* reset rtt state machine */
+	strand->rtt = 0;
 
 	if (ENABLED_TXN_STATS(options)) {
 		stats_update(TXN_BEGIN, strand, TXN_STAT(txn), 0, 0);

@@ -107,6 +107,8 @@ typedef struct _histogram {
     uint32_t num_buckets;        /* Configured number of buckets */
     uint32_t bucket_size_ns;     /* Configured size of each bucket (in ns) */
     uint32_t max_bucket_ns;      /* Configured max latency (in ns) */
+
+	uint64_t rtt_start_time;    /* Start time from the last transaction */
 }histogram_t;
 
 void histogram_init(strand_t *s);
