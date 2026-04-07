@@ -69,7 +69,6 @@ typedef struct {
 	unsigned int zc_tx_errors;
 	bool zc_tx;
 	bool zc_rx;
-	bool zc_rx_submitted;  /* Track if multishot recv has been submitted */
 
 	struct io_uring_zcrx_rq rq_ring;
 	unsigned long area_token;
@@ -250,7 +249,19 @@ static int init_ring(protocol_t *p, flowop_options_t *flowop_options)
 
 		pd->area_token = area_reg.rq_area_token;
 		pd->zcrx_id = reg.zcrx_id;
-		/* Don't submit multishot recv here - it will be submitted on first recv call */
+
+		sqe = io_uring_get_sqe(&pd->ring);
+		io_uring_prep_rw(IORING_OP_RECV_ZC, sqe, p->fd, NULL, 0, 0);
+		sqe->ioprio |= IORING_RECV_MULTISHOT;
+		sqe->zcrx_ifq_idx = pd->zcrx_id;
+		sqe->user_data = URING_USER_DATA_RECV;
+
+		/* Submit the multishot recv immediately */
+		ret = io_uring_submit(&pd->ring);
+		if (ret < 0) {
+			ulog(UPERF_LOG_ERROR, -ret, "Failed to submit initial multishot recv");
+			return -1;
+		}
 	}
 
 	return UPERF_SUCCESS;
@@ -468,22 +479,6 @@ static int protocol_tcp_zc_recv(protocol_t *p, void *buffer, int size,
 	if (!pd->zc_rx)
 		return generic_recv(p, buffer, size, options);
 
-	/* Submit multishot recv on first call */
-	if (!pd->zc_rx_submitted) {
-		sqe = io_uring_get_sqe(&pd->ring);
-		if (sqe) {
-			io_uring_prep_rw(IORING_OP_RECV_ZC, sqe, p->fd, NULL, 0, 0);
-			sqe->ioprio |= IORING_RECV_MULTISHOT;
-			sqe->zcrx_ifq_idx = pd->zcrx_id;
-			sqe->user_data = URING_USER_DATA_RECV;
-			io_uring_submit(&pd->ring);
-			pd->zc_rx_submitted = true;
-		} else {
-			ulog(UPERF_LOG_ERROR, 0, "Failed to get SQE for initial multishot recv");
-			return -1;
-		}
-	}
-
 	rq_mask = pd->rq_ring.ring_entries - 1;
 
 	/* Keep waiting until we receive the expected amount of data */
@@ -503,9 +498,8 @@ static int protocol_tcp_zc_recv(protocol_t *p, void *buffer, int size,
 			if (!(cqe->flags & IORING_CQE_F_MORE)) {
 				/* Multishot recv has terminated */
 				multishot_ended = 1;
-				/* ENOSPC (-28) is expected under heavy load when buffers fill */
-				if (cqe->res != 0 && cqe->res != -ENOSPC)
-					ulog(UPERF_LOG_WARN, 0, "multishot recv ended: %i", cqe->res);
+				if (cqe->res != 0)
+					ulog(UPERF_LOG_WARN, 0, "invalid final recvzc ret %i", cqe->res);
 				io_uring_cqe_seen(&pd->ring, cqe);
 				break;
 			}
@@ -540,12 +534,12 @@ static int protocol_tcp_zc_recv(protocol_t *p, void *buffer, int size,
 		}
 	}
 
-	/* Size mismatches are normal for TCP streaming - only warn if significantly off */
-	if (received < size * 0.9 || received > size * 1.1)
-		ulog(UPERF_LOG_DEBUG, 0, "receive size mismatch %lu / %lu", received, size);
+	if (received != size)
+		ulog(UPERF_LOG_WARN, 0, "receive size mismatch %lu / %lu", received, size);
 
 	/* Re-submit multishot recv if it terminated */
 	if (multishot_ended) {
+		ulog(UPERF_LOG_DEBUG, 0, "Re-submitting multishot recv");
 		sqe = io_uring_get_sqe(&pd->ring);
 		if (sqe) {
 			io_uring_prep_rw(IORING_OP_RECV_ZC, sqe, p->fd, NULL, 0, 0);
