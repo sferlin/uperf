@@ -73,6 +73,7 @@ typedef struct {
 	struct io_uring_zcrx_rq rq_ring;
 	unsigned long area_token;
 	__u32 zcrx_id;
+	void *area_ptr;
 } tcp_zc_private_data;
 
 static void set_cpu_affinity(int cpu)
@@ -249,6 +250,7 @@ static int init_ring(protocol_t *p, flowop_options_t *flowop_options)
 
 		pd->area_token = area_reg.rq_area_token;
 		pd->zcrx_id = reg.zcrx_id;
+		pd->area_ptr = area_ptr;
 
 		sqe = io_uring_get_sqe(&pd->ring);
 		io_uring_prep_rw(IORING_OP_RECV_ZC, sqe, p->fd, NULL, 0, 0);
@@ -471,88 +473,69 @@ static int protocol_tcp_zc_recv(protocol_t *p, void *buffer, int size,
 	struct io_uring_zcrx_cqe *rcqe;
 	struct io_uring_zcrx_rqe *rqe;
 	struct io_uring_cqe *cqe;
-	struct io_uring_sqe *sqe;
-	size_t received = 0;
-	int multishot_ended = 0;
-	int found_recv_cqe;
+	size_t bytes_copied = 0;
+	char *dest = (char *)buffer;
 
 	if (!pd->zc_rx)
 		return generic_recv(p, buffer, size, options);
 
 	rq_mask = pd->rq_ring.ring_entries - 1;
 
-	/* Keep waiting until we receive the expected amount of data */
-	while (received < size && !multishot_ended) {
-		found_recv_cqe = 0;
-		io_uring_submit_and_wait(&pd->ring, 1);
-
-		io_uring_for_each_cqe(&pd->ring, head, cqe) {
-			/* Skip send CQEs - they don't belong to us, leave them for send function */
-			if (cqe->user_data == URING_USER_DATA_SEND) {
-				continue;
-			}
-
-			/* This is a recv CQE - consume it */
-			found_recv_cqe = 1;
-
-			if (!(cqe->flags & IORING_CQE_F_MORE)) {
-				/* Multishot recv has terminated */
-				multishot_ended = 1;
-				if (cqe->res != 0)
-					ulog(UPERF_LOG_WARN, 0, "invalid final recvzc ret %i", cqe->res);
-				io_uring_cqe_seen(&pd->ring, cqe);
-				break;
-			}
-
-			if (cqe->res < 0) {
-				ulog(UPERF_LOG_WARN, cqe->res, "recvzc(): %d", cqe->res);
-				io_uring_cqe_seen(&pd->ring, cqe);
-			} else {
-				received += cqe->res;
-
-				rcqe = (struct io_uring_zcrx_cqe *)(cqe + 1);
-
-				/* processed, return back to the kernel */
-				rqe = &pd->rq_ring.rqes[pd->rq_ring.rq_tail & rq_mask];
-				rqe->off = (rcqe->off & ~IORING_ZCRX_AREA_MASK) | pd->area_token;
-				rqe->len = cqe->res;
-				io_uring_smp_store_release(pd->rq_ring.ktail, ++pd->rq_ring.rq_tail);
-
-				io_uring_cqe_seen(&pd->ring, cqe);
-
-				/* If we've received enough data, we can stop */
-				if (received >= size)
-					break;
-			}
+	/* Accumulate data until we have enough */
+	while (bytes_copied < size) {
+		/* Wait for next CQE */
+		cqe = wait_cqe_fast(&pd->ring);
+		if (cqe == NULL) {
+			return bytes_copied > 0 ? bytes_copied : -1;
 		}
 
-		/* If we didn't find any recv CQEs this iteration, avoid tight loop */
-		if (!found_recv_cqe) {
-			/* Poll with timeout to avoid busy waiting */
-			struct __kernel_timespec ts = { .tv_sec = 0, .tv_nsec = 100000 }; /* 100us */
-			io_uring_wait_cqe_timeout(&pd->ring, &cqe, &ts);
+		/* Handle send CQEs - in request-response, these are stale */
+		if (cqe->user_data == URING_USER_DATA_SEND) {
+			/* Consume and properly account for this CQE */
+			if (cqe->flags & IORING_CQE_F_NOTIF) {
+				/* Zero-copy notification */
+				if (cqe->res)
+					pd->zc_tx_errors++;
+				pd->compl_cqes--;
+			}
+			/* Both completions and notifications are stale - consume them */
+			io_uring_cqe_seen(&pd->ring, cqe);
+			continue;
 		}
+
+		/* Check if multishot ended */
+		if (!(cqe->flags & IORING_CQE_F_MORE)) {
+			io_uring_cqe_seen(&pd->ring, cqe);
+			return bytes_copied;
+		}
+
+		/* Check for errors */
+		if (cqe->res < 0) {
+			ulog(UPERF_LOG_WARN, -cqe->res, "recvzc");
+			io_uring_cqe_seen(&pd->ring, cqe);
+			return bytes_copied > 0 ? bytes_copied : cqe->res;
+		}
+
+		/* Copy data from zero-copy area */
+		rcqe = (struct io_uring_zcrx_cqe *)(cqe + 1);
+		size_t chunk_size = cqe->res;
+		unsigned long offset = rcqe->off & ~IORING_ZCRX_AREA_MASK;
+		size_t to_copy = (bytes_copied + chunk_size > size) ?
+		                 (size - bytes_copied) : chunk_size;
+
+		memcpy(dest + bytes_copied, (char *)pd->area_ptr + offset, to_copy);
+		bytes_copied += to_copy;
+
+		/* Return buffer to kernel */
+		rqe = &pd->rq_ring.rqes[pd->rq_ring.rq_tail & rq_mask];
+		rqe->off = offset | pd->area_token;
+		rqe->len = chunk_size;
+		io_uring_smp_store_release(pd->rq_ring.ktail, ++pd->rq_ring.rq_tail);
+
+		io_uring_cqe_seen(&pd->ring, cqe);
 	}
 
-	if (received != size)
-		ulog(UPERF_LOG_WARN, 0, "receive size mismatch %lu / %lu", received, size);
-
-	/* Re-submit multishot recv if it terminated */
-	if (multishot_ended) {
-		ulog(UPERF_LOG_DEBUG, 0, "Re-submitting multishot recv");
-		sqe = io_uring_get_sqe(&pd->ring);
-		if (sqe) {
-			io_uring_prep_rw(IORING_OP_RECV_ZC, sqe, p->fd, NULL, 0, 0);
-			sqe->ioprio |= IORING_RECV_MULTISHOT;
-			sqe->zcrx_ifq_idx = pd->zcrx_id;
-			sqe->user_data = URING_USER_DATA_RECV;
-			io_uring_submit(&pd->ring);
-		} else {
-			ulog(UPERF_LOG_ERROR, 0, "Failed to get SQE for multishot recv resubmit");
-		}
-	}
-
-	return received;
+	return bytes_copied;
 }
 
 static protocol_t *protocol_tcp_zc_accept(protocol_t *p, void *options);
